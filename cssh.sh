@@ -83,7 +83,7 @@ main() {
 
   # 把你自己的公钥放到这里，多设备共用就是共用同一个公钥
   SSH_KEYS=(
-    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICsn0vpcDQ4l3pYzkVmEXU5ci98/MepeKvVRelD5TRlI shared-key@mydevice"
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMKfanrx8Yu+YX6UUNqKcfqUEIzwJNv6AxzD/iwitQqL pubkey@sshserver"
   )
 
   for key in "${SSH_KEYS[@]}"; do
