@@ -2,13 +2,15 @@
 
 set -e
 
-MODE="${1:-append}"
+MODE="${1:-replace}"
 
 if [[ "$MODE" != "append" && "$MODE" != "replace" ]]; then
   echo "用法: $0 [append|replace]"
   echo ""
   echo "append  : 新增模式，只添加本次公钥，不处理其他公钥"
   echo "replace : 覆盖模式，只保留本次公钥，其他公钥会被注释掉"
+  echo ""
+  echo "默认模式: replace"
   exit 1
 fi
 
@@ -167,6 +169,7 @@ configure_sshd() {
 main() {
   setup_ssh_directory
 
+  # 只保留这里列出的公钥；replace 模式下，其他 authorized_keys 里的有效公钥会被注释掉
   SSH_KEYS=(
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHua9naEXdxy5o6aWweI0p4+79mkUyn+gyquxZ1dm6dV dev@baixiaosheng"
   )
