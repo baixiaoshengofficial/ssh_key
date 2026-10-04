@@ -17,7 +17,7 @@ CASES=(
   key_symlink config_symlink dir_symlink lock_symlink hardlink writable_home
   concurrent empty_input private_input corrupt_input mismatched_type duplicate_input
   include_spaces include_ambiguous include_cycle relative_include managed_block cli_help cli_invalid cli_nonroot cli_home cli_defaults cli_append
-  real_login
+  stdin_default stdin_append real_login
 )
 passed=0
 for scenario in "${CASES[@]}"; do

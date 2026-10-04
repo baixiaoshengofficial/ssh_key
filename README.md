@@ -4,10 +4,10 @@
 
 ## 使用
 
-下载并检查脚本，以 root 运行：
+在 root 终端一键下载并运行：
 
 ```bash
-sudo bash cssh.sh
+curl -fsSL https://raw.githubusercontent.com/baixiaoshengofficial/ssh_key/refs/heads/main/cssh.sh | bash
 ```
 
 默认 `replace`：授权内置公钥，注释其他公钥，启用公钥登录，关闭密码和键盘交互登录。
@@ -15,10 +15,12 @@ sudo bash cssh.sh
 只追加内置公钥、保留已有公钥及其限制：
 
 ```bash
-sudo bash cssh.sh append
+curl -fsSL https://raw.githubusercontent.com/baixiaoshengofficial/ssh_key/refs/heads/main/cssh.sh | bash -s -- append
 ```
 
 `append` 同样会关闭密码和键盘交互登录。
+
+已下载脚本时，直接运行 `bash cssh.sh` 或 `bash cssh.sh append`。
 
 ## 注意
 

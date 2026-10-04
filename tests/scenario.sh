@@ -192,6 +192,26 @@ case $SCENARIO in
       }
       if [[ $EXPECTED_MODE == cli_append ]]; then main append; else main; fi
     ' test "$SCRIPT_DIR/.." "$SCENARIO" ;;
+  stdin_default|stdin_append)
+    if (( UID != 0 )); then printf 'SKIP stdin CLI check (requires root)\n'; exit 0; fi
+    # Replace only the final filesystem operation, so the real stdin entry,
+    # argument parsing and built-in key validation run without changing host SSH.
+    awk '
+      /^if \[\[.*BASH_SOURCE/ {
+        print "apply_changes() {"
+        print "  [[ $MODE == $EXPECTED_MODE && $DISABLE_PASSWORD == 1 ]] || fail wrong-defaults"
+        print "  [[ ${KEYS[0]} == \"${SSH_KEYS[0]}\" ]] || fail wrong-embedded-key"
+        print "  printf CSSH_STDIN_OK"
+        print "}"
+      }
+      { print }
+    ' "$SCRIPT_DIR/../cssh.sh" > "$FIXTURE/stream.sh"
+    if [[ $SCENARIO == stdin_append ]]; then
+      result=$(cat "$FIXTURE/stream.sh" | EXPECTED_MODE=append bash -s -- append)
+    else
+      result=$(cat "$FIXTURE/stream.sh" | EXPECTED_MODE=replace bash)
+    fi
+    assert test "$result" = CSSH_STDIN_OK ;;
   relative_include)
     WORK=$(mktemp -d "$FIXTURE/work.XXXXXXXXXX")
     trap 'rm -rf -- "$WORK"' EXIT

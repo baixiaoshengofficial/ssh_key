@@ -438,4 +438,5 @@ main() {
   apply_changes
 }
 
-if [[ ${BASH_SOURCE[0]} == "$0" ]]; then main "$@"; fi
+# A piped script has no BASH_SOURCE entry; sourced files remain library-only.
+if [[ -z ${BASH_SOURCE[0]:-} || ${BASH_SOURCE[0]:-} == "$0" ]]; then main "$@"; fi
