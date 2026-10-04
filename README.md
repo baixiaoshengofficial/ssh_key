@@ -1,65 +1,36 @@
-# SSH 公钥登录配置
+# SSH 公钥登录一键脚本
 
-纯 Bash 单文件脚本，为服务器的 **root 账号** 添加自己的 SSH 公钥，默认保留旧公钥和密码登录。
+个人使用的纯 Bash 脚本。公钥硬编码在 `cssh.sh` 顶部的 `SSH_KEYS` 中，可以配置多把公钥。
 
-需要 Linux、Bash 4.4+、OpenSSH，以及使用 `/etc/ssh/sshd_config`、支持重载的 SSH 服务。
+## 使用
 
-## 快速使用
-
-### 1. 下载代码
+下载并检查脚本，以 root 运行：
 
 ```bash
-git clone https://github.com/baixiaoshengofficial/ssh_key.git
-cd ssh_key
+sudo bash cssh.sh
 ```
 
-先查看 `cssh.sh` 源码再执行。
+默认 `replace`：授权内置公钥，注释其他公钥，启用公钥登录，关闭密码和键盘交互登录。
 
-### 2. 添加公钥
-
-将自己的 `.pub` 公钥文件上传到服务器，例如 `/root/login.pub`。**私钥留在客户端。**
+只追加内置公钥、保留已有公钥及其限制：
 
 ```bash
-sudo bash cssh.sh --key-file /root/login.pub
+sudo bash cssh.sh append
 ```
 
-可以在公钥文件中放多把公钥，每行一把。已有公钥及其访问限制会保留。
-
-### 3. 测试登录
-
-保留当前连接，在客户端新开终端测试，替换下面的私钥路径和服务器 IP：
-
-```bash
-ssh -o PreferredAuthentications=publickey -o IdentitiesOnly=yes \
-    -i ~/.ssh/id_ed25519 root@服务器IP
-```
-
-## 可选操作
-
-**确认新公钥能登录后再执行。** 将 `SHA256:你的指纹` 替换为添加公钥时输出的已测试指纹。
-
-```bash
-# 关闭密码和键盘交互登录，保留所有公钥
-sudo bash cssh.sh --key-file /root/login.pub --disable-password \
-    --confirm-fingerprint SHA256:你的指纹
-
-# 停用其他公钥，只保留本次提供的公钥
-sudo bash cssh.sh replace --key-file /root/login.pub \
-    --confirm-fingerprint SHA256:你的指纹
-```
-
-需要同时替换公钥并关闭密码时，在 `replace` 命令中加 `--disable-password`。
+`append` 同样会关闭密码和键盘交互登录。
 
 ## 注意
 
-- 完成新窗口登录测试前，不要关闭原 SSH 连接；指纹确认不能代替登录测试。
-- 存在 `Match` 条件配置或依赖密码的多因素认证时，脚本会拒绝自动关闭密码，需要手动处理。
-- 脚本会备份公钥和 SSH 配置，输出备份路径；修改或重载失败会尝试回滚。断电或强制终止时，可通过服务器控制台用备份恢复。
+- 执行前确认你持有内置公钥对应的私钥；保留当前 SSH 连接，新窗口登录成功后再关闭。
+- 自动备份公钥和 SSH 配置；修改或重载失败会尝试恢复，备份路径会在输出中显示。
+- 配置存在 `Match` 或要求额外认证步骤时中止，避免误改条件策略或锁死登录。
+
+需要 Linux、Bash 4.4+、OpenSSH 和支持重载的 SSH 服务，配置路径为 `/etc/ssh/sshd_config`。
 
 ## 测试
 
 ```bash
-bash -n cssh.sh
 bash tests/run.sh
 ```
 

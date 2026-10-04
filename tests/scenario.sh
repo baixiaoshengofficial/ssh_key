@@ -10,8 +10,8 @@ SCENARIO=$1 SUITE=$2 ACTION=${3:-}
 FIXTURE="$SUITE/$SCENARIO"
 ROOT_UID=$UID ACCOUNT_NAME=$(id -un) ACCOUNT_HOME="$FIXTURE/home"
 SSHD_CONFIG="$FIXTURE/sshd_config" SSHD_BIN=$(command -v sshd)
-INPUT_FILE="$SUITE/new.pub" MODE=append DISABLE_PASSWORD=0
-CONFIRMATIONS=() STAGING_FILES=() RELOAD_COMMAND=()
+SSH_KEYS=("$(cat "$SUITE/new.pub")") MODE=append DISABLE_PASSWORD=1
+STAGING_FILES=() RELOAD_COMMAND=()
 WORK='' TRANSACTION_ACTIVE=0
 
 assert() { "$@" || { printf 'Assertion failed: %s\n' "$*" >&2; exit 1; }; }
@@ -60,19 +60,14 @@ if [[ $ACTION == action ]]; then
   WORK=$(mktemp -d "$FIXTURE/work.XXXXXXXXXX")
   case $SCENARIO in
     replace) MODE=replace ;;
-    confirm_missing) MODE=replace ;;
-    confirm_wrong) MODE=replace; CONFIRMATIONS=(SHA256:wrong) ;;
     harden|include_harden|preserve_hardening|match_main|match_nested|match_quoted|match_equals|match_hash|mfa)
       DISABLE_PASSWORD=1 ;;
-    empty_input|private_input|corrupt_input|mismatched_type|duplicate_input) INPUT_FILE="$FIXTURE/input.pub" ;;
+    empty_input|private_input|corrupt_input|mismatched_type|duplicate_input) mapfile -t SSH_KEYS < "$FIXTURE/input.pub" ;;
+    real_login) MODE=${4:-replace} ;;
     include_cycle) ;; # inspect_config must reject before OpenSSH is called.
   esac
   if [[ $SCENARIO == preserve_hardening && ${4:-} == append ]]; then DISABLE_PASSWORD=0; fi
   load_keys
-  case $SCENARIO in
-    replace|harden|include_harden|preserve_hardening|match_main|match_nested|match_quoted|match_equals|match_hash|mfa)
-      CONFIRMATIONS=("${FINGERPRINTS[0]}") ;;
-  esac
   apply_changes
   exit 0
 fi
@@ -92,7 +87,7 @@ PasswordAuthentication yes
 KbdInteractiveAuthentication yes
 CONFIG
 NEW_KEY=$(cat "$SUITE/new.pub")
-run_action() { bash "$SCRIPT_DIR/scenario.sh" "$SCENARIO" "$SUITE" action; }
+run_action() { bash "$SCRIPT_DIR/scenario.sh" "$SCENARIO" "$SUITE" action "${1:-replace}"; }
 expect_failure() {
   if run_action > "$FIXTURE/failure.log" 2>&1; then
     printf 'Expected failure: %s\n' "$SCENARIO" >&2; exit 1
@@ -158,7 +153,7 @@ esac
 cp -L "$SSHD_CONFIG" "$FIXTURE/before-config"
 
 case $SCENARIO in
-  confirm_missing|confirm_wrong|match_main|match_nested|match_quoted|match_equals|match_hash|match_root|mfa|wrong_key_path|invalid_config|service_missing|hardlink|writable_home|concurrent|include_ambiguous|include_cycle|managed_block|backup_failure)
+  match_append|match_main|match_nested|match_quoted|match_equals|match_hash|match_root|mfa|wrong_key_path|invalid_config|service_missing|hardlink|writable_home|concurrent|include_ambiguous|include_cycle|managed_block|backup_failure)
     expect_failure; assert_unchanged; assert test ! -f "$FIXTURE/reloads" ;;
   empty_input|private_input|corrupt_input|mismatched_type)
     expect_failure; assert_unchanged ;;
@@ -172,28 +167,31 @@ case $SCENARIO in
   fresh_failure|fresh_stage_failure)
     expect_failure; assert test ! -e "$ACCOUNT_HOME/.ssh"; assert_same "$FIXTURE/before-config" "$SSHD_CONFIG" ;;
   cli_help) assert bash "$SCRIPT_DIR/../cssh.sh" --help ;;
-  cli_missing)
-    if bash "$SCRIPT_DIR/../cssh.sh" > "$FIXTURE/cli.log" 2>&1; then exit 1; fi
-    assert grep -q -- '--key-file' "$FIXTURE/cli.log" ;;
+  cli_invalid)
+    if bash "$SCRIPT_DIR/../cssh.sh" invalid-mode > "$FIXTURE/cli.log" 2>&1; then exit 1; fi
+    assert grep -q '未知模式' "$FIXTURE/cli.log" ;;
   cli_nonroot)
     if (( UID == 0 )) && command -v setpriv >/dev/null; then
-      if setpriv --reuid=65534 --regid=65534 --clear-groups bash "$SCRIPT_DIR/../cssh.sh" --key-file /does-not-exist > "$FIXTURE/cli.log" 2>&1; then exit 1; fi
+      if setpriv --reuid=65534 --regid=65534 --clear-groups bash "$SCRIPT_DIR/../cssh.sh" > "$FIXTURE/cli.log" 2>&1; then exit 1; fi
       assert grep -q '必须以 root 运行' "$FIXTURE/cli.log"
     else
       printf 'SKIP nonroot CLI check (requires root and setpriv)\n'
     fi ;;
-  cli_home)
+  cli_home|cli_defaults|cli_append)
     if (( UID != 0 )); then printf 'SKIP root CLI check\n'; exit 0; fi
     bash -c '
       source "$1/cssh.sh"
+      export HOME=/deliberately-wrong-home
+      EXPECTED_MODE=$2
       apply_changes() {
         local expected
         expected=$(getent passwd 0 | cut -d: -f6)
         [[ $ACCOUNT_HOME == "$expected" && $ACCOUNT_HOME != "$HOME" ]]
+        [[ $DISABLE_PASSWORD == 1 && ${KEYS[0]} == "${SSH_KEYS[0]}" ]]
+        if [[ $EXPECTED_MODE == cli_append ]]; then [[ $MODE == append ]]; else [[ $MODE == replace ]]; fi
       }
-      export HOME=/deliberately-wrong-home
-      main --key-file "$2/new.pub"
-    ' test "$SCRIPT_DIR/.." "$SUITE" ;;
+      if [[ $EXPECTED_MODE == cli_append ]]; then main append; else main; fi
+    ' test "$SCRIPT_DIR/.." "$SCENARIO" ;;
   relative_include)
     WORK=$(mktemp -d "$FIXTURE/work.XXXXXXXXXX")
     trap 'rm -rf -- "$WORK"' EXIT
@@ -227,23 +225,15 @@ case $SCENARIO in
     assert login old
     if login new 2>/dev/null; then exit 1; fi
     run_action
-    assert login old; assert login new
+    if login old 2>/dev/null; then exit 1; fi
+    assert login new
+    assert test "$(policy passwordauthentication)" = no
+    assert test "$(policy kbdinteractiveauthentication)" = no
     printf '%s\n' "$(cat "$SUITE/old.pub")" "command=\"printf CSSH_RESTRICTED\",restrict $NEW_KEY" > "$ACCOUNT_HOME/.ssh/authorized_keys"
-    run_action
+    run_action append
+    assert login old
     result=$(login new); [[ $result == *CSSH_RESTRICTED ]] || exit 1
-    # Invoke the same action with explicit destructive options in an isolated shell.
-    bash -c '
-      source "$1/cssh.sh"
-      set -Eeuo pipefail; umask 077; shopt -s nullglob
-      ROOT_UID=0 ACCOUNT_NAME=root ACCOUNT_HOME="$2/home" SSHD_CONFIG="$2/sshd_config"
-      SSHD_BIN=$(command -v sshd) INPUT_FILE="$3/new.pub" MODE=replace DISABLE_PASSWORD=1
-      STAGING_FILES=() TRANSACTION_ACTIVE=0 TEST_FIXTURE=$2
-      trap cleanup EXIT; trap "exit 143" TERM
-      WORK=$(mktemp -d "$2/work.XXXXXXXXXX")
-      prepare_service() { :; }
-      reload_service() { kill -HUP "$(cat "$TEST_FIXTURE/daemon-pid")"; sleep 0.1; }
-      load_keys; CONFIRMATIONS=("${FINGERPRINTS[0]}"); apply_changes
-    ' test "$SCRIPT_DIR/.." "$FIXTURE" "$SUITE"
+    run_action replace
     result=$(login new); [[ $result == *CSSH_RESTRICTED ]] || exit 1
     if login old 2>/dev/null; then exit 1; fi
     assert test "$(policy passwordauthentication)" = no
@@ -270,7 +260,7 @@ case $SCENARIO in
       append|unknown_types)
         assert grep -Fq "$(cat "$SUITE/old.pub")" "$ACCOUNT_HOME/.ssh/authorized_keys"
         assert grep -Fq "$NEW_KEY" "$ACCOUNT_HOME/.ssh/authorized_keys"
-        assert test "$(policy passwordauthentication)" = yes ;;
+        assert test "$(policy passwordauthentication)" = no ;;
     esac
     assert test "$(stat -c %a "$ACCOUNT_HOME/.ssh/authorized_keys")" = 600
     assert test "$(stat -c %a "$ACCOUNT_HOME/.ssh")" = 700

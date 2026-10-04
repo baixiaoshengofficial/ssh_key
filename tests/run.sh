@@ -10,13 +10,13 @@ for name in host old new; do
 done
 CASES=(
   append restricted comment_quotes unknown_types no_newline idempotent replace
-  confirm_missing confirm_wrong harden include_harden preserve_hardening
+  harden include_harden preserve_hardening
   match_append match_main match_nested match_quoted match_equals match_hash
   match_root mfa wrong_key_path invalid_config service_missing reload_failure
   live_validation partial_write rollback_reload fresh_failure fresh_stage_failure backup_failure signal_failure
   key_symlink config_symlink dir_symlink lock_symlink hardlink writable_home
   concurrent empty_input private_input corrupt_input mismatched_type duplicate_input
-  include_spaces include_ambiguous include_cycle relative_include managed_block cli_help cli_missing cli_nonroot cli_home
+  include_spaces include_ambiguous include_cycle relative_include managed_block cli_help cli_invalid cli_nonroot cli_home cli_defaults cli_append
   real_login
 )
 passed=0

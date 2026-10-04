@@ -1,15 +1,17 @@
 #!/bin/bash
 # SSH public-key setup. Bash and standard Linux/OpenSSH tools only.
 
+# Personal login keys. Add or replace public keys here; never put private keys here.
+SSH_KEYS=(
+  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHua9naEXdxy5o6aWweI0p4+79mkUyn+gyquxZ1dm6dV dev@baixiaosheng"
+)
+
 usage() {
   cat <<'HELP'
-用法: bash cssh.sh [append|replace] --key-file 公钥文件 [选项]
-默认追加公钥，保留旧公钥及密码登录，仅管理当前 root 账号。
-
-  --disable-password             关闭密码和键盘交互登录
-  --confirm-fingerprint SHA256:…  确认已在新 SSH 会话测试的公钥指纹
-  -h, --help                     显示帮助
-replace 或 --disable-password 必须提供已测试的指纹。
+用法: bash cssh.sh [append|replace]
+默认 replace：授权脚本中的 SSH_KEYS 公钥，注释其他公钥。
+append：追加内置公钥，保留已有公钥及其访问限制。
+两种模式均启用公钥登录、关闭密码和键盘交互登录，仅管理 root 账号。
 HELP
 }
 
@@ -97,35 +99,21 @@ identify_key() {
 
 load_keys() {
   local line first
-  [[ -f $INPUT_FILE ]] || fail '--key-file 必须是公钥文本文件'
   KEYS=() KEY_IDS=() FINGERPRINTS=()
   declare -A seen=()
-  while IFS= read -r line || [[ -n $line ]]; do
+  for line in "${SSH_KEYS[@]}"; do
+    [[ $line != *$'\n'* ]] || fail 'SSH_KEYS 每个元素必须是一行公钥'
     line=${line%$'\r'}
     [[ $line =~ ^[[:space:]]*(#|$) ]] && continue
-    identify_key "$line" || fail '输入必须是有效 SSH 公钥，不能是私钥'
+    identify_key "$line" || fail 'SSH_KEYS 必须填写有效公钥，不能填写私钥'
     read -r first _ <<< "$line"
     [[ $first == "${KEY_FIELDS[0]}" && $KEY_ID == "$first:"* ]] || fail '公钥输入不能包含授权 options'
     if [[ -z ${seen["$KEY_ID"]+yes} ]]; then
       seen["$KEY_ID"]=1
       KEYS+=("$line") KEY_IDS+=("$KEY_ID") FINGERPRINTS+=("$KEY_FINGERPRINT")
     fi
-  done < "$INPUT_FILE"
-  ((${#KEYS[@]})) || fail '没有提供有效公钥；不会修改服务器'
-}
-
-check_confirmation() {
-  local supplied known matched
-  if [[ $MODE == replace || $DISABLE_PASSWORD == 1 ]]; then
-    ((${#CONFIRMATIONS[@]})) || fail '请先追加并测试登录，再通过 --confirm-fingerprint 确认指纹'
-  fi
-  for supplied in "${CONFIRMATIONS[@]}"; do
-    matched=0
-    for known in "${FINGERPRINTS[@]}"; do
-      [[ $supplied != "$known" ]] || matched=1
-    done
-    (( matched )) || fail '确认的指纹不属于本次公钥'
   done
+  ((${#KEYS[@]})) || fail 'SSH_KEYS 没有有效公钥；不会修改服务器'
 }
 
 # Parse sshd keywords including quoted keywords and optional '=' separators.
@@ -358,7 +346,6 @@ apply_changes() {
   local lock candidate source_ip local_ip local_port source_port extra
   SSH_DIR="$ACCOUNT_HOME/.ssh" KEY_FILE="$ACCOUNT_HOME/.ssh/authorized_keys"
   CONFIG_DIR=$(dirname -- "$SSHD_CONFIG")
-  check_confirmation
   check_path "$ACCOUNT_HOME" directory; check_parents "$ACCOUNT_HOME"
   check_path "$CONFIG_DIR" directory; check_parents "$SSHD_CONFIG"
   check_path "$SSHD_CONFIG" file
@@ -424,23 +411,16 @@ main() {
   shopt -s nullglob
   shopt -u dotglob nocaseglob failglob extglob globstar
   (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) )) || fail '需要 Bash 4.4+'
-  MODE=append INPUT_FILE='' DISABLE_PASSWORD=0
-  CONFIRMATIONS=() STAGING_FILES=() RELOAD_COMMAND=()
+  MODE=${1:-replace} DISABLE_PASSWORD=1
+  STAGING_FILES=() RELOAD_COMMAND=()
   WORK='' TRANSACTION_ACTIVE=0
-  local mode_set=0 dependency passwd_line
-  while (($#)); do
-    case $1 in
-      append|replace) (( ! mode_set )) || fail '模式只能指定一次'; MODE=$1; mode_set=1; shift ;;
-      --key-file|--confirm-fingerprint)
-        (($# >= 2)) && [[ -n $2 && $2 != --* ]] || fail "$1 缺少参数"
-        if [[ $1 == --key-file ]]; then INPUT_FILE=$2; else CONFIRMATIONS+=("$2"); fi
-        shift 2 ;;
-      --disable-password) DISABLE_PASSWORD=1; shift ;;
-      -h|--help) usage; return 0 ;;
-      *) fail "未知参数: $1" ;;
-    esac
-  done
-  [[ -n $INPUT_FILE ]] || fail '请用 --key-file 提供自己的公钥'
+  local dependency passwd_line
+  (($# <= 1)) || fail '用法: bash cssh.sh [append|replace]'
+  case $MODE in
+    append|replace) ;;
+    -h|--help) usage; return 0 ;;
+    *) fail "未知模式: $MODE" ;;
+  esac
   (( EUID == 0 && UID == 0 )) || fail '必须以 root 运行；未修改任何文件'
   for dependency in ssh-keygen sshd timeout flock mktemp stat getent realpath base64 awk cat chmod mv dirname tail od rm mkdir rmdir; do
     command -v "$dependency" >/dev/null || fail "缺少系统工具: $dependency"
