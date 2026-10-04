@@ -428,7 +428,12 @@ apply_changes() {
   reload_service || fail 'SSH 服务重载失败'
   TRANSACTION_ACTIVE=0
   printf '🔄 SSH 服务已重载\n'
-  printf '✅ 完成: %s；公钥指纹:\n' "$MODE"
+  if [[ $MODE == replace ]]; then
+    printf '✅ 设置完成（覆盖模式）\n'
+  else
+    printf '✅ 设置完成（追加模式）\n'
+  fi
+  printf '🔑 已授权公钥指纹：\n'
   printf '  %s\n' "${FINGERPRINTS[@]}"
   printf '⚠️ 请保持当前连接，在新窗口测试公钥登录。\n'
 }
