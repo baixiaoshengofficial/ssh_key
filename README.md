@@ -1,8 +1,8 @@
 # SSH 公钥登录配置
 
-为服务器的 **root 账号** 添加自己的 SSH 公钥，默认保留旧公钥和密码登录。
+纯 Bash 单文件脚本，为服务器的 **root 账号** 添加自己的 SSH 公钥，默认保留旧公钥和密码登录。
 
-需要 Bash、Python 3.9+、OpenSSH，以及支持重载的 SSH 服务。
+需要 Linux、Bash 4.4+、OpenSSH，以及使用 `/etc/ssh/sshd_config`、支持重载的 SSH 服务。
 
 ## 快速使用
 
@@ -13,7 +13,7 @@ git clone https://github.com/baixiaoshengofficial/ssh_key.git
 cd ssh_key
 ```
 
-先查看源码再执行。`cssh.sh` 和 `cssh.py` 需要放在同一目录。
+先查看 `cssh.sh` 源码再执行。
 
 ### 2. 添加公钥
 
@@ -60,7 +60,7 @@ sudo bash cssh.sh replace --key-file /root/login.pub \
 
 ```bash
 bash -n cssh.sh
-python3 -m unittest discover -s tests -v
+bash tests/run.sh
 ```
 
 MIT License
