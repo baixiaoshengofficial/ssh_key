@@ -1,7 +1,8 @@
 #!/bin/bash
 # SSH public-key setup. Bash and standard Linux/OpenSSH tools only.
 
-# Personal login keys. Add or replace public keys here; never put private keys here.
+# 自用公钥：其他人使用前务必替换为自己的 .pub 公钥，并确保持有对应私钥。
+# 保留他人的公钥会授权对应私钥持有者登录 root；这里只能填公钥，不能填私钥。
 SSH_KEYS=(
   "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHua9naEXdxy5o6aWweI0p4+79mkUyn+gyquxZ1dm6dV dev@baixiaosheng"
 )

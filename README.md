@@ -2,6 +2,8 @@
 
 个人使用的纯 Bash 脚本。公钥硬编码在 `cssh.sh` 顶部的 `SSH_KEYS` 中，可以配置多把公钥。
 
+**其他人使用前务必将 `SSH_KEYS` 替换为自己的 `.pub` 公钥，并确保持有对应私钥。保留作者公钥会授权作者的私钥登录你的 root 账号；默认运行还会关闭密码登录，可能导致你无法登录。不要填写或上传私钥。**
+
 ## 使用
 
 在 root 终端一键下载并运行：
@@ -21,6 +23,14 @@ curl -fsSL https://raw.githubusercontent.com/baixiaoshengofficial/ssh_key/refs/h
 `append` 同样会关闭密码和键盘交互登录。
 
 已下载脚本时，直接运行 `bash cssh.sh` 或 `bash cssh.sh append`。
+
+其他人请先下载，修改公钥后再运行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/baixiaoshengofficial/ssh_key/refs/heads/main/cssh.sh -o cssh.sh
+```
+
+编辑 `cssh.sh` 顶部的 `SSH_KEYS`，替换为自己的公钥，再执行 `bash cssh.sh`。
 
 ## 注意
 
