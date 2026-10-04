@@ -416,6 +416,11 @@ apply_changes() {
   fi
   printf '%s\n' "${KEY_MESSAGES[@]}"
   atomic_install "$WORK/new-config" "$SSHD_CONFIG" "$CONFIG_MODE" || fail 'SSH 配置写入失败'
+  printf '✅ 启用公钥登录\n'
+  if [[ $DISABLE_PASSWORD == 1 ]]; then
+    printf '🚫 禁用密码登录\n'
+    printf '🚫 禁用键盘交互登录\n'
+  fi
   validate_config "$SSHD_CONFIG" || fail 'SSH 配置校验失败'
   verify_policy "$SSHD_CONFIG"
   printf '✅ 已写入的 sshd 配置和登录策略检测通过\n'
@@ -423,11 +428,6 @@ apply_changes() {
   reload_service || fail 'SSH 服务重载失败'
   TRANSACTION_ACTIVE=0
   printf '🔄 SSH 服务已重载\n'
-  printf '✅ 启用公钥登录\n'
-  if [[ $DISABLE_PASSWORD == 1 ]]; then
-    printf '🚫 禁用密码登录\n'
-    printf '🚫 禁用键盘交互登录\n'
-  fi
   printf '✅ 完成: %s；公钥指纹:\n' "$MODE"
   printf '  %s\n' "${FINGERPRINTS[@]}"
   printf '⚠️ 请保持当前连接，在新窗口测试公钥登录。\n'
