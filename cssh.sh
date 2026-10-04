@@ -16,7 +16,7 @@ append：追加内置公钥，保留已有公钥及其访问限制。
 HELP
 }
 
-fail() { printf '失败: %s\n' "$*" >&2; exit 1; }
+fail() { printf '❌ 失败: %s\n' "$*" >&2; exit 1; }
 
 check_path() {
   local path=$1 kind=$2 owner mode links permissions
@@ -199,6 +199,7 @@ inspect_config() {
 
 build_keys() {
   local line index last_byte
+  KEY_MESSAGES=()
   declare -A allowed=() present=()
   for index in "${!KEY_IDS[@]}"; do allowed["${KEY_IDS[index]}"]=1; done
   : > "$WORK/new-keys"
@@ -222,6 +223,9 @@ build_keys() {
         if [[ ${last_byte//[[:space:]]/} != 10 ]]; then printf '\n' >> "$WORK/new-keys"; fi
       fi
       printf '%s\n' "${KEYS[index]}" >> "$WORK/new-keys"
+      KEY_MESSAGES+=("✅ 已添加 SSH 公钥: ${KEYS[index]:0:30}...")
+    else
+      KEY_MESSAGES+=("✅ SSH 公钥已存在，保留原有限制: ${KEYS[index]:0:30}...")
     fi
   done
 }
@@ -318,6 +322,7 @@ cleanup() {
   trap - EXIT INT TERM
   set +e
   if [[ ${TRANSACTION_ACTIVE:-0} == 1 ]]; then
+    printf '⚠️ 操作未完成，正在恢复原公钥和 SSH 配置...\n' >&2
     atomic_install "$CONFIG_BACKUP" "$SSHD_CONFIG" "$CONFIG_MODE" || recovery=1
     if [[ $HAD_KEYS == 1 ]]; then
       atomic_install "$KEY_BACKUP" "$KEY_FILE" "$KEY_MODE" || recovery=1
@@ -332,9 +337,9 @@ cleanup() {
     fi
     reload_service || recovery=1
     if (( recovery )); then
-      printf '回滚未完全成功，请使用备份恢复: %s %s\n' "$CONFIG_BACKUP" "$KEY_BACKUP" >&2
+      printf '❌ 回滚未完全成功，请使用备份恢复: %s %s\n' "$CONFIG_BACKUP" "$KEY_BACKUP" >&2
     else
-      printf '原公钥和 SSH 配置已恢复，并已重载。\n' >&2
+      printf '✅ 原公钥和 SSH 配置已恢复，并已重载。\n' >&2
     fi
     (( status != 0 )) || status=1
   fi
@@ -345,6 +350,7 @@ cleanup() {
 
 apply_changes() {
   local lock candidate source_ip local_ip local_port source_port extra
+  printf '当前模式: %s\n' "$MODE"
   SSH_DIR="$ACCOUNT_HOME/.ssh" KEY_FILE="$ACCOUNT_HOME/.ssh/authorized_keys"
   CONFIG_DIR=$(dirname -- "$SSHD_CONFIG")
   check_path "$ACCOUNT_HOME" directory; check_parents "$ACCOUNT_HOME"
@@ -384,24 +390,47 @@ apply_changes() {
   candidate=$(mktemp "$CONFIG_DIR/.cssh-check.XXXXXXXXXX")
   STAGING_FILES+=("$candidate")
   cat -- "$WORK/new-config" > "$candidate"
+  printf '🔍 正在检查待应用的 SSH 配置和登录策略...\n'
   validate_config "$candidate" || fail '候选 SSH 配置无效'
   verify_policy "$candidate"
+  printf '✅ 待应用的 SSH 配置和登录策略检测通过\n'
   prepare_service
-  if [[ $HAD_KEYS == 1 ]]; then save_backup "$WORK/original-keys" "$KEY_FILE"; KEY_BACKUP=$BACKUP_RESULT; fi
+  if [[ $HAD_KEYS == 1 ]]; then
+    save_backup "$WORK/original-keys" "$KEY_FILE"; KEY_BACKUP=$BACKUP_RESULT
+    printf '📦 已备份 authorized_keys 到: %s\n' "$KEY_BACKUP"
+  fi
   save_backup "$WORK/original-config" "$SSHD_CONFIG"; CONFIG_BACKUP=$BACKUP_RESULT
-  printf '备份: %s %s\n' "$CONFIG_BACKUP" "$KEY_BACKUP"
+  printf '📦 已备份 SSH 配置到: %s\n' "$CONFIG_BACKUP"
   TRANSACTION_ACTIVE=1
-  if [[ $HAD_DIRECTORY == 0 ]]; then mkdir -m 700 -- "$SSH_DIR"; fi
+  if [[ $HAD_DIRECTORY == 0 ]]; then
+    mkdir -m 700 -- "$SSH_DIR"
+    printf '📂 已创建 .ssh 目录\n'
+  fi
   chmod 700 "$SSH_DIR"
   atomic_install "$WORK/new-keys" "$KEY_FILE" 600 || fail '公钥写入失败'
+  if [[ $HAD_KEYS == 0 ]]; then printf '📝 已创建 authorized_keys 文件\n'; fi
+  if [[ $MODE == replace ]]; then
+    printf '🧹 覆盖模式：已注释除本次允许公钥以外的其他公钥条目。\n'
+  else
+    printf '🧹 新增模式：保留已有公钥及其访问限制。\n'
+  fi
+  printf '%s\n' "${KEY_MESSAGES[@]}"
   atomic_install "$WORK/new-config" "$SSHD_CONFIG" "$CONFIG_MODE" || fail 'SSH 配置写入失败'
   validate_config "$SSHD_CONFIG" || fail 'SSH 配置校验失败'
   verify_policy "$SSHD_CONFIG"
+  printf '✅ 已写入的 sshd 配置和登录策略检测通过\n'
+  printf '🔄 正在重载 SSH 服务...\n'
   reload_service || fail 'SSH 服务重载失败'
   TRANSACTION_ACTIVE=0
-  printf '完成: %s；公钥指纹:\n' "$MODE"
+  printf '🔄 SSH 服务已重载\n'
+  printf '✅ 启用公钥登录\n'
+  if [[ $DISABLE_PASSWORD == 1 ]]; then
+    printf '🚫 禁用密码登录\n'
+    printf '🚫 禁用键盘交互登录\n'
+  fi
+  printf '✅ 完成: %s；公钥指纹:\n' "$MODE"
   printf '  %s\n' "${FINGERPRINTS[@]}"
-  printf '请保持当前连接，在新窗口测试公钥登录。\n'
+  printf '⚠️ 请保持当前连接，在新窗口测试公钥登录。\n'
 }
 
 main() {
